@@ -97,6 +97,54 @@ class Tools:
         except (ValueError, TypeError):
             return str(val)
 
+    # ── Source URL builders ────────────────────────────────────────
+
+    @staticmethod
+    def _fec_candidate_url(candidate_id: str) -> str:
+        return f"https://www.fec.gov/data/candidate/{candidate_id}/" if candidate_id else ""
+
+    @staticmethod
+    def _fec_committee_url(committee_id: str) -> str:
+        return f"https://www.fec.gov/data/committee/{committee_id}/" if committee_id else ""
+
+    @staticmethod
+    def _lda_filing_url(filing_uuid: str) -> str:
+        return f"https://lda.senate.gov/filings/public/filing/{filing_uuid}/" if filing_uuid else ""
+
+    @staticmethod
+    def _littlesis_url(entity_id) -> str:
+        return f"https://littlesis.org/entities/{entity_id}" if entity_id else ""
+
+    @staticmethod
+    def _bioguide_url(bioguide_id: str) -> str:
+        return f"https://bioguide.congress.gov/search/bio/{bioguide_id}" if bioguide_id else ""
+
+    @staticmethod
+    def _opensecrets_url(opensecrets_id: str) -> str:
+        return f"https://www.opensecrets.org/members-of-congress/summary?cid={opensecrets_id}" if opensecrets_id else ""
+
+    @staticmethod
+    def _propublica_ein_url(ein: str) -> str:
+        clean = str(ein).replace("-", "") if ein else ""
+        return f"https://projects.propublica.org/nonprofits/organizations/{clean}" if clean else ""
+
+    @staticmethod
+    def _source_link(url: str, label: str) -> str:
+        """Format a markdown source link, or empty string if no URL."""
+        return f"[{label}]({url})" if url else ""
+
+    def _sources_footer(self, sources: list) -> str:
+        """Build a Sources footer from a list of (label, url) tuples. Deduplicates."""
+        seen = set()
+        unique = []
+        for label, url in sources:
+            if url and url not in seen:
+                seen.add(url)
+                unique.append(f"[{label}]({url})")
+        if not unique:
+            return ""
+        return "\n\n---\n**Sources:** " + " | ".join(unique)
+
     async def _get(
         self,
         base_url: str,
@@ -244,6 +292,7 @@ class Tools:
             return f"No {data_type} found for '{query}'. Try broadening your search or a different data_type."
 
         lines = [f"## FEC {data_type.title()}\n\nFound **{total}** results for \"{query}\"\n"]
+        sources = []
 
         for i, item in enumerate(items[:10], 1):
             if data_type == "candidates":
@@ -253,7 +302,9 @@ class Tools:
                 cand_state = item.get("state", "")
                 office = item.get("office_full", item.get("office", ""))
                 receipts = item.get("total_receipts")
-                lines.append(f"{i}. **{name}** ({cand_party}) — {cand_state}")
+                fec_link = self._fec_candidate_url(cand_id)
+                name_display = f"[{name}]({fec_link})" if fec_link else f"**{name}**"
+                lines.append(f"{i}. **{name_display}** ({cand_party}) — {cand_state}")
                 parts = []
                 if office:
                     parts.append(f"Office: {office}")
@@ -263,6 +314,8 @@ class Tools:
                     parts.append(f"FEC ID: {cand_id}")
                 if parts:
                     lines.append(f"   {' | '.join(parts)}")
+                if fec_link:
+                    sources.append(("FEC.gov", fec_link))
                 lines.append("")
 
             elif data_type == "committees":
@@ -270,7 +323,9 @@ class Tools:
                 cmt_id = item.get("committee_id", "")
                 cmt_type = item.get("committee_type_full", item.get("committee_type", ""))
                 connected = item.get("connected_org_name", "")
-                lines.append(f"{i}. **{name}**")
+                fec_link = self._fec_committee_url(cmt_id)
+                name_display = f"[{name}]({fec_link})" if fec_link else f"**{name}**"
+                lines.append(f"{i}. **{name_display}**")
                 parts = []
                 if cmt_type:
                     parts.append(f"Type: {cmt_type}")
@@ -280,18 +335,24 @@ class Tools:
                     parts.append(f"ID: {cmt_id}")
                 if parts:
                     lines.append(f"   {' | '.join(parts)}")
+                if fec_link:
+                    sources.append(("FEC.gov", fec_link))
                 lines.append("")
 
             else:  # contributions
                 committee = item.get("committee_name", item.get("committee_id", "Unknown"))
+                cmt_id = item.get("committee_id", "")
                 total_amount = item.get("total", item.get("amount"))
                 dimension = item.get("dimension", "")
+                fec_link = self._fec_committee_url(cmt_id)
                 lines.append(f"{i}. **{committee}**")
                 parts = []
                 if total_amount is not None:
                     parts.append(f"Amount: {self._fmt_money(total_amount)}")
                 if dimension:
                     parts.append(f"Dimension: {dimension}")
+                if fec_link:
+                    parts.append(f"[FEC]({fec_link})")
                 if parts:
                     lines.append(f"   {' | '.join(parts)}")
                 lines.append("")
@@ -305,6 +366,8 @@ class Tools:
             "contributions": "Use `search_expenditures(query)` to see independent expenditures for/against candidates.",
         }
         lines.append(f"\n_Tip: {hint.get(data_type, '')}_")
+        sources.append(("FEC Campaign Finance Data", "https://www.fec.gov/data/"))
+        lines.append(self._sources_footer(sources))
 
         await emitter.success_update(f"Found {total} {data_type}")
         return "\n".join(lines)
@@ -355,6 +418,7 @@ class Tools:
             return f"No lobbying {search_type} found for '{query}'. Try broadening your search."
 
         lines = [f"## Lobbying {search_type.title()}\n\nFound **{total}** results for \"{query}\"\n"]
+        sources = []
 
         for i, item in enumerate(items[:10], 1):
             if search_type == "filings":
@@ -363,8 +427,11 @@ class Tools:
                 amount = item.get("income", item.get("expenses"))
                 year = item.get("filing_year", "")
                 filing_type = item.get("filing_type", "")
+                filing_uuid = item.get("filing_uuid", "")
+                lda_link = self._lda_filing_url(filing_uuid)
 
-                lines.append(f"{i}. **{registrant}**" + (f" → {client}" if client else ""))
+                header = f"{i}. **{registrant}**" + (f" → {client}" if client else "")
+                lines.append(header)
                 parts = []
                 if amount is not None:
                     parts.append(f"Amount: {self._fmt_money(amount)}")
@@ -372,12 +439,19 @@ class Tools:
                     parts.append(f"Year: {year}")
                 if filing_type:
                     parts.append(f"Type: {filing_type}")
+                if lda_link:
+                    parts.append(f"[Filing]({lda_link})")
+                    sources.append(("Senate LDA", lda_link))
                 if parts:
                     lines.append(f"   {' | '.join(parts)}")
-                issues = item.get("lobbying_activities", item.get("general_issue_code", ""))
-                if issues:
-                    issue_str = issues if isinstance(issues, str) else str(issues)[:200]
-                    lines.append(f"   Issues: {issue_str[:200]}")
+                # Extract issue descriptions from lobbying_activities
+                activities = item.get("lobbying_activities", [])
+                if isinstance(activities, list) and activities:
+                    descs = [a.get("description", "") for a in activities if a.get("description")]
+                    if descs:
+                        lines.append(f"   Issues: {descs[0][:200]}")
+                elif isinstance(activities, str):
+                    lines.append(f"   Issues: {activities[:200]}")
                 lines.append("")
 
             else:  # contributions
@@ -385,6 +459,8 @@ class Tools:
                 contributor = item.get("contributor_name", item.get("contributor", ""))
                 amount = item.get("amount")
                 date = (item.get("date", item.get("contribution_date", "")) or "")[:10]
+                filing_uuid = item.get("filing_uuid", "")
+                lda_link = self._lda_filing_url(filing_uuid)
 
                 lines.append(f"{i}. **{contributor or 'Unknown'}** → {payee}")
                 parts = []
@@ -392,6 +468,9 @@ class Tools:
                     parts.append(f"Amount: {self._fmt_money(amount)}")
                 if date:
                     parts.append(f"Date: {date}")
+                if lda_link:
+                    parts.append(f"[Filing]({lda_link})")
+                    sources.append(("Senate LDA", lda_link))
                 if parts:
                     lines.append(f"   {' | '.join(parts)}")
                 lines.append("")
@@ -400,6 +479,8 @@ class Tools:
             lines.append(f"_Showing page {page} of {(total + 24) // 25}. Use page={page + 1} for more._")
 
         lines.append(f"\n_Tip: Use `org_influence_map(org_name)` to see an org's full political footprint including lobbying._")
+        sources.append(("Senate Lobbying Disclosure Act", "https://lda.senate.gov/filings/public/filing/search/"))
+        lines.append(self._sources_footer(sources))
 
         await emitter.success_update(f"Found {total} lobbying {search_type}")
         return "\n".join(lines)
@@ -441,6 +522,7 @@ class Tools:
             return f"No influence entities found for '{query}'. Try a different spelling or broader search."
 
         lines = [f"## Influence Network Entities\n\nFound **{total}** results for \"{query}\"\n"]
+        sources = []
 
         for i, item in enumerate(items[:10], 1):
             name = item.get("name", "Unknown")
@@ -448,8 +530,10 @@ class Tools:
             ent_id = item.get("littlesis_id", item.get("id", ""))
             blurb = item.get("blurb", item.get("description", ""))
             rel_count = item.get("relationship_count", item.get("link_count", ""))
+            ls_url = item.get("littlesis_url") or self._littlesis_url(ent_id)
 
-            lines.append(f"{i}. **{name}** ({ent_type})")
+            name_display = f"[{name}]({ls_url})" if ls_url else name
+            lines.append(f"{i}. **{name_display}** ({ent_type})")
             parts = []
             if rel_count:
                 parts.append(f"{rel_count} relationships")
@@ -459,12 +543,16 @@ class Tools:
                 lines.append(f"   {' | '.join(parts)}")
             if blurb:
                 lines.append(f"   {str(blurb)[:200]}")
+            if ls_url:
+                sources.append(("LittleSis", ls_url))
             lines.append("")
 
         if total > page * 25:
             lines.append(f"_Showing page {page} of {(total + 24) // 25}. Use page={page + 1} for more._")
 
         lines.append(f"\n_Tip: Use `get_entity_network(entity_id)` to see an entity's full relationship map._")
+        sources.append(("LittleSis Power Network", "https://littlesis.org"))
+        lines.append(self._sources_footer(sources))
 
         await emitter.success_update(f"Found {total} influence entities")
         return "\n".join(lines)
@@ -598,12 +686,14 @@ class Tools:
 
             id_parts = []
             if bioguide:
-                id_parts.append(f"Bioguide: `{bioguide}`")
+                bg_url = self._bioguide_url(bioguide)
+                id_parts.append(f"Bioguide: [{bioguide}]({bg_url})")
             if fec_ids:
-                fec_str = ", ".join(str(f) for f in fec_ids[:3])
-                id_parts.append(f"FEC: `{fec_str}`")
+                fec_links = [f"[{f}]({self._fec_candidate_url(f)})" for f in fec_ids[:3]]
+                id_parts.append(f"FEC: {', '.join(fec_links)}")
             if opensecrets:
-                id_parts.append(f"OpenSecrets: `{opensecrets}`")
+                os_url = self._opensecrets_url(opensecrets)
+                id_parts.append(f"OpenSecrets: [{opensecrets}]({os_url})")
             if openstates:
                 id_parts.append(f"OpenStates: `{openstates}`")
             if id_parts:
@@ -615,6 +705,12 @@ class Tools:
 
         if total > page * 25:
             lines.append(f"_Showing page {page} of {(total + 24) // 25}. Use page={page + 1} for more._")
+
+        lines.append(self._sources_footer([
+            ("Congress Bioguide", "https://bioguide.congress.gov"),
+            ("FEC.gov", "https://www.fec.gov/data/"),
+            ("OpenSecrets", "https://www.opensecrets.org"),
+        ]))
 
         await emitter.success_update(f"Found {total} legislators")
         return "\n".join(lines)
@@ -745,6 +841,20 @@ class Tools:
         if scope:
             lines.append(f"\n_Scope: {scope}_")
 
+        # Sources
+        src = [("FEC Campaign Finance", "https://www.fec.gov/data/")]
+        bioguide = identity.get("bioguide_id", "")
+        if bioguide:
+            src.append(("Congress Bioguide", self._bioguide_url(bioguide)))
+        opensecrets = identity.get("opensecrets_id", "")
+        if opensecrets:
+            src.append(("OpenSecrets", self._opensecrets_url(opensecrets)))
+        if influence:
+            src.append(("LittleSis", "https://littlesis.org"))
+        if lobbying:
+            src.append(("Senate LDA", "https://lda.senate.gov/filings/public/filing/search/"))
+        lines.append(self._sources_footer(src))
+
         await emitter.success_update(f"Funding profile complete for {name}")
         return "\n".join(lines)
 
@@ -871,6 +981,17 @@ class Tools:
         if scope:
             lines.append(f"\n_Scope: {scope}_")
 
+        # Sources
+        src = []
+        if client_filings or reg_filings:
+            src.append(("Senate LDA Filings", "https://lda.senate.gov/filings/public/filing/search/"))
+        if committees:
+            src.append(("FEC Committees", "https://www.fec.gov/data/"))
+        if entity:
+            ent_id = entity.get("littlesis_id")
+            src.append(("LittleSis", self._littlesis_url(ent_id) or "https://littlesis.org"))
+        lines.append(self._sources_footer(src))
+
         await emitter.success_update(f"Influence map complete for {org_name}")
         return "\n".join(lines)
 
@@ -983,6 +1104,16 @@ class Tools:
         if scope:
             lines.append(f"\n_Scope: {scope}_")
 
+        # Sources
+        src = []
+        if contributions:
+            src.append(("FEC Campaign Finance", "https://www.fec.gov/data/"))
+        if lobbying:
+            src.append(("Senate LDA Filings", "https://lda.senate.gov/filings/public/filing/search/"))
+        if awards:
+            src.append(("USAspending.gov", "https://www.usaspending.gov"))
+        lines.append(self._sources_footer(src))
+
         await emitter.success_update(f"Pay-to-play analysis complete for {entity_name}")
         return "\n".join(lines)
 
@@ -1056,6 +1187,8 @@ class Tools:
 
         if total > page * 25:
             lines.append(f"_Showing page {page} of {(total + 24) // 25}. Use page={page + 1} for more._")
+
+        lines.append(self._sources_footer([("FEC Independent Expenditures", "https://www.fec.gov/data/independent-expenditures/")]))
 
         await emitter.success_update(f"Found {total} independent expenditures")
         return "\n".join(lines)
@@ -1176,6 +1309,12 @@ class Tools:
         lines.append("---")
         lines.append(f"_To dig deeper: `search_lobbying(\"{query}\")`, `search_influence_network(\"{query}\")`, or `org_influence_map(\"org name\")` for a specific organization._")
         lines.append(f"_Data scope: Federal FEC filings only. State-level campaign finance and dark money (501(c)(4)) not included._")
+        src = [("FEC.gov", "https://www.fec.gov/data/")]
+        if lobby_data and not lobby_err:
+            src.append(("Senate LDA", "https://lda.senate.gov/filings/public/filing/search/"))
+        if inf_data and not inf_err:
+            src.append(("LittleSis", "https://littlesis.org"))
+        lines.append(self._sources_footer(src))
 
         await emitter.success_update(f"Briefing complete — {sections_found} data sources")
         return "\n".join(lines)
@@ -1262,11 +1401,20 @@ class Tools:
             if money_parts:
                 lines.append(f"   {' | '.join(money_parts)}")
 
-            lines.append(f"   _→ `search_irs_filings(\"{ein}\")` for 990 filing history_")
+            pp_url = self._propublica_ein_url(ein)
+            if pp_url:
+                lines.append(f"   _→ `search_irs_filings(\"{ein}\")` for 990s | [ProPublica]({pp_url})_")
+            else:
+                lines.append(f"   _→ `search_irs_filings(\"{ein}\")` for 990 filing history_")
             lines.append("")
 
         if total > page * 25:
             lines.append(f"_Showing page {page} of {(total + 24) // 25}. Use page={page + 1} for more._")
+
+        lines.append(self._sources_footer([
+            ("IRS Business Master File", "https://www.irs.gov/charities-non-profits/tax-exempt-organization-search"),
+            ("ProPublica Nonprofit Explorer", "https://projects.propublica.org/nonprofits/"),
+        ]))
 
         await emitter.success_update(f"Found {total} organizations")
         return "\n".join(lines)
@@ -1332,6 +1480,12 @@ class Tools:
             lines.append(f"_Showing first 15 of {total} filings. Use page={page + 1} for more._")
 
         lines.append(f"\n_Note: Financial data availability depends on electronic filing. Older filings may have limited data._")
+
+        pp_url = self._propublica_ein_url(ein)
+        lines.append(self._sources_footer([
+            ("IRS 990 Electronic Filings", "https://www.irs.gov/charities-non-profits/tax-exempt-organization-search"),
+            ("ProPublica Nonprofit Explorer", pp_url or "https://projects.propublica.org/nonprofits/"),
+        ]))
 
         await emitter.success_update(f"Found {total} filings for {org_name}")
         return "\n".join(lines)
