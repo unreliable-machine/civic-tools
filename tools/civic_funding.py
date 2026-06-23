@@ -6,22 +6,10 @@ version: 0.1.0
 requirements: httpx
 """
 
-import json
 import os
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, Optional
 
 from pydantic import BaseModel, Field
-
-SYSTEM_PROMPT_INJECTION = """
-### Civic Funding Intelligence — Usage Guide
-Use this tool for grants and philanthropic funding:
-- `search_grants` — Federal grant opportunities from Grants.gov (government money available to apply for)
-- `search_foundations` — Private foundations that fund causes (IRS 990-PF data)
-- `search_foundation_grants` — What a specific foundation has funded
-- `get_grant` / `get_foundation` — Detailed views of specific records
-Do NOT use this tool for federal contracts — use the Civic Procurement tool instead.
-Key distinction: GRANTS fund projects/programs. CONTRACTS (procurement) pay for services.
-"""
 
 
 class EventEmitter:

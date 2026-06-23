@@ -6,20 +6,11 @@ version: 0.1.0
 requirements: httpx
 """
 
-import json
 import os
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional
 
 from pydantic import BaseModel, Field
-
-SYSTEM_PROMPT_INJECTION = """
-### Civic Intelligence Search — Usage Guide
-Use this tool for broad, cross-source searches across civic intelligence data.
-- `search_all` searches across ALL data sources at once — use when the query spans multiple domains or you're unsure which specific tool to use.
-- `data_status` shows what data is available and how fresh it is — use when the user asks what civic data you have.
-For domain-specific queries, prefer the specialized civic tools (procurement, funding, legislators, organizations, court) for better results.
-"""
 
 
 class EventEmitter:

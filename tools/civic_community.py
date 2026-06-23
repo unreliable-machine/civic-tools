@@ -8,32 +8,9 @@ requirements: httpx
 
 import asyncio
 import os
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, Optional
 
 from pydantic import BaseModel, Field
-
-SYSTEM_PROMPT_INJECTION = """
-### Civic Community Intelligence Tool
-
-**This tool provides Census demographics, labor/wage data, health indicators, and housing affordability data.**
-
-For targeted queries:
-- **Demographics for a place?** → `community_search_demographics` to find geographies, then `community_get_demographic_profile` for full detail
-- **Wages, unions, inequality?** → `community_search_labor` for EPI indicators, `community_get_labor_summary` for state snapshot
-- **Health conditions in a county?** → `community_search_health` to find measures, `community_get_health_profile` for a county's full health profile
-- **Rent costs, affordability?** → `community_search_housing` for HUD Fair Market Rents and income limits
-- **Broad community overview** → Combine demographics + health + housing for a geography
-
-**Use the other civic tools for:** campaign finance/lobbying (civic_research), legislation/bills (civic_legislators), grants/foundations (civic_funding), federal contracts (civic_procurement), court records (civic_court), nonprofits by sector (civic_organizations).
-
-**Data coverage:** Census ACS 2024 (states, counties, congressional districts), EPI labor indicators (wages, union rates by state), CDC PLACES 2023 (23 health measures for 3,000+ counties), HUD FMR/Income Limits 2026 (Fair Market Rents and income limits by area).
-
-ANTI-HALLUCINATION (CRITICAL):
-- ONLY present data that was returned by a tool call. NEVER invent, estimate, or extrapolate values.
-- If a tool returns no results, say "no results found" — do NOT fill in with guesses.
-- NEVER fabricate URLs. Only include URLs returned by the tool.
-- Use EXACT values from tool output. Do not round, paraphrase, or approximate numerical data.
-"""
 
 
 class EventEmitter:

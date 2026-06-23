@@ -6,21 +6,10 @@ version: 0.1.0
 requirements: httpx
 """
 
-import json
 import os
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, Optional
 
 from pydantic import BaseModel, Field
-
-SYSTEM_PROMPT_INJECTION = """
-### Civic Court Intelligence — Usage Guide
-Use this tool for federal court data from CourtListener:
-- `search_opinions` — Written court decisions and rulings (legal precedent)
-- `search_dockets` — Active and closed court cases (litigation tracking)
-- `search_judges` — Federal judge profiles and appointments
-- `get_court_detail` — Full details for a specific opinion, docket, or judge
-Note: Court data may be limited depending on sync status. Use civic_search.data_status() to check.
-"""
 
 
 class EventEmitter:

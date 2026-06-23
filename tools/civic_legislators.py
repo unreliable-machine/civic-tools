@@ -6,22 +6,10 @@ version: 0.1.0
 requirements: httpx
 """
 
-import json
 import os
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, Optional
 
 from pydantic import BaseModel, Field
-
-SYSTEM_PROMPT_INJECTION = """
-### Civic Legislators & Legislation — Usage Guide
-Use this tool for state-level political intelligence:
-- `search_legislators` / `get_legislator` — Find and profile state legislators
-- `find_legislators_by_address` — Who represents a specific address (geocodes automatically)
-- `search_bills` / `get_bill` — Search and drill into state legislative bills
-- `brief_on_bill` — Multi-source intelligence brief (bill + sponsors + demographics + orgs)
-- `get_demographics` — Census ACS data for states and congressional districts
-This covers STATE-level legislators (not federal Congress). For nonprofits, use Civic Organizations. For court data, use Civic Court.
-"""
 
 
 class EventEmitter:
@@ -642,46 +630,6 @@ class Tools:
             await emitter.error_update(f"Fetch failed: {e}")
             return f"Error: Failed to fetch demographics — {e}"
 
-        # Handle list response vs single profile
-        if "items" in data:
-            items = data.get("results", [])
-            if not items:
-                await emitter.success_update("No demographics found")
-                return f"No demographic data found for {desc}."
-            # Format as a list
-            lines = [f"## Census Demographics\n\nFound **{data.get('total_results', len(items))}** profiles\n"]
-            for i, profile in enumerate(items, 1):
-                name = profile.get("state_name") or profile.get("geo_name") or "Unknown"
-                dn = profile.get("district_number")
-                if dn:
-                    name = f"{name} CD-{dn}"
-                pop = profile.get("total_population")
-                income = profile.get("median_household_income")
-                poverty = profile.get("poverty_rate")
-                try:
-                    pop_str = f"{int(float(pop)):,}" if pop else "N/A"
-                except (ValueError, TypeError):
-                    pop_str = "N/A"
-                try:
-                    income_str = f"${float(income):,.0f}" if income else "N/A"
-                except (ValueError, TypeError):
-                    income_str = "N/A"
-                try:
-                    poverty_str = f"{float(poverty):.1f}%" if poverty is not None else "N/A"
-                except (ValueError, TypeError):
-                    poverty_str = "N/A"
-                lines.append(f"{i}. **{name}** — Pop: {pop_str} | Income: {income_str} | Poverty: {poverty_str}")
-            await emitter.success_update(f"Demographics retrieved for {len(items)} areas")
-            return "\n".join(lines)
-
-        # Single profile response
-        profile = data
-        name = profile.get("state_name") or profile.get("geo_name") or desc
-        district_num = profile.get("district_number")
-        if district_num:
-            name = f"{name} — Congressional District {district_num}"
-        lines = [f"## Demographics: {name}\n"]
-
         def _pct(val):
             if val is None:
                 return None
@@ -705,6 +653,34 @@ class Tools:
                 return f"{int(float(val)):,}"
             except (ValueError, TypeError):
                 return str(val)
+
+        # Handle list response vs single profile
+        if "items" in data:
+            items = data.get("results", [])
+            if not items:
+                await emitter.success_update("No demographics found")
+                return f"No demographic data found for {desc}."
+            # Format as a list
+            lines = [f"## Census Demographics\n\nFound **{data.get('total_results', len(items))}** profiles\n"]
+            for i, profile in enumerate(items, 1):
+                name = profile.get("state_name") or profile.get("geo_name") or "Unknown"
+                dn = profile.get("district_number")
+                if dn:
+                    name = f"{name} CD-{dn}"
+                pop_str = _num(profile.get("total_population")) or "N/A"
+                income_str = _money(profile.get("median_household_income")) or "N/A"
+                poverty_str = _pct(profile.get("poverty_rate")) or "N/A"
+                lines.append(f"{i}. **{name}** — Pop: {pop_str} | Income: {income_str} | Poverty: {poverty_str}")
+            await emitter.success_update(f"Demographics retrieved for {len(items)} areas")
+            return "\n".join(lines)
+
+        # Single profile response
+        profile = data
+        name = profile.get("state_name") or profile.get("geo_name") or desc
+        district_num = profile.get("district_number")
+        if district_num:
+            name = f"{name} — Congressional District {district_num}"
+        lines = [f"## Demographics: {name}\n"]
 
         # Core stats
         sections = [

@@ -6,20 +6,10 @@ version: 0.1.0
 requirements: httpx
 """
 
-import json
 import os
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, Optional
 
 from pydantic import BaseModel, Field
-
-SYSTEM_PROMPT_INJECTION = """
-### Civic Organizations Intelligence — Usage Guide
-Use this tool for nonprofit and civil society data:
-- `search_nonprofits` — Find 501(c)(3) organizations by name, state, or NTEE category
-- `get_nonprofit` — Detailed IRS filing data for a specific nonprofit
-- `find_partners` — Coalition partner discovery: cross-references nonprofits + demographics + legislators + litigation risk
-For foundations (philanthropic funders), use the Civic Funding tool instead.
-"""
 
 
 class EventEmitter:

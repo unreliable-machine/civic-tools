@@ -8,30 +8,9 @@ requirements: httpx
 
 import asyncio
 import os
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, Optional
 
 from pydantic import BaseModel, Field
-
-SYSTEM_PROMPT_INJECTION = """
-### Civic Research Intelligence Tool
-
-**This tool provides campaign finance, lobbying, political influence, and IRS nonprofit data.**
-
-For targeted queries:
-- **Who funds a politician?** → `crosswalk_legislator` to get their bioguide ID, then `legislator_funding_profile`
-- **Who's lobbying on an issue?** → `search_lobbying`
-- **What's an org's political influence?** → `org_influence_map`
-- **Is there a pay-to-play pattern?** → `pay_to_play_analysis`
-- **Who's connected to whom?** → `search_influence_network`, then `get_entity_network` for details
-- **Campaign donations / PAC spending** → `search_campaign_finance`
-- **Super PAC independent expenditures** → `search_expenditures`
-- **Nonprofit IRS filings** → `search_irs_organizations` to find them, `search_irs_filings` for 990 data
-- **Broad political money overview** → `generate_briefing` (combines lobbying, influence, and campaign finance)
-
-**Use the other civic tools for:** legislation/bills (civic_legislators), grants/foundations (civic_funding), federal contracts (civic_procurement), court records (civic_court), nonprofits by sector (civic_organizations).
-
-**Data coverage:** 437K influence entities, 1.8M relationships, 1.4M contribution aggregates, federal lobbying filings, FEC candidates/committees, 2.9M IRS 990 filings. Federal data only — state campaign finance not yet included.
-"""
 
 
 class EventEmitter:
@@ -128,11 +107,6 @@ class Tools:
         clean = str(ein).replace("-", "") if ein else ""
         return f"https://projects.propublica.org/nonprofits/organizations/{clean}" if clean else ""
 
-    @staticmethod
-    def _source_link(url: str, label: str) -> str:
-        """Format a markdown source link, or empty string if no URL."""
-        return f"[{label}]({url})" if url else ""
-
     def _sources_footer(self, sources: list) -> str:
         """Build a Sources footer from a list of (label, url) tuples. Deduplicates."""
         seen = set()
@@ -227,12 +201,6 @@ class Tools:
             entry += f" ({self._fmt_money(amount)})"
         return entry
 
-    def _finance_url(self) -> str:
-        return self.valves.CIVIC_FINANCE_URL
-
-    def _irs_url(self) -> str:
-        return self.valves.CIVIC_IRS_URL
-
     # ── Search methods (fast, targeted) ───────────────────────────
 
     async def search_campaign_finance(
@@ -262,17 +230,17 @@ class Tools:
         await emitter.progress_update(f"Searching FEC {data_type}: {query}")
 
         if data_type == "candidates":
-            data, error = await self._get(self._finance_url(), "/api/v1/candidates", {
+            data, error = await self._get(self.valves.CIVIC_FINANCE_URL, "/api/v1/candidates", {
                 "q": query, "state": state, "party": party, "cycle": cycle,
                 "page": page, "page_size": 25,
             })
         elif data_type == "committees":
-            data, error = await self._get(self._finance_url(), "/api/v1/committees", {
+            data, error = await self._get(self.valves.CIVIC_FINANCE_URL, "/api/v1/committees", {
                 "q": query, "state": state, "party": party,
                 "page": page, "page_size": 25,
             })
         elif data_type == "contributions":
-            data, error = await self._get(self._finance_url(), "/api/v1/contributions/aggregates", {
+            data, error = await self._get(self.valves.CIVIC_FINANCE_URL, "/api/v1/contributions/aggregates", {
                 "committee_id": query, "cycle": cycle,
                 "page": page, "page_size": 25,
             })
@@ -394,12 +362,12 @@ class Tools:
         await emitter.progress_update(f"Searching lobbying {search_type}: {query}")
 
         if search_type == "filings":
-            data, error = await self._get(self._finance_url(), "/api/v1/lobbying/filings", {
+            data, error = await self._get(self.valves.CIVIC_FINANCE_URL, "/api/v1/lobbying/filings", {
                 "q": query, "filing_year": filing_year,
                 "page": page, "page_size": 25,
             })
         elif search_type == "contributions":
-            data, error = await self._get(self._finance_url(), "/api/v1/lobbying/contributions", {
+            data, error = await self._get(self.valves.CIVIC_FINANCE_URL, "/api/v1/lobbying/contributions", {
                 "q": query, "page": page, "page_size": 25,
             })
         else:
@@ -505,7 +473,7 @@ class Tools:
         emitter = EventEmitter(__event_emitter__)
         await emitter.progress_update(f"Searching influence network: {query}")
 
-        data, error = await self._get(self._finance_url(), "/api/v1/influence/entities", {
+        data, error = await self._get(self.valves.CIVIC_FINANCE_URL, "/api/v1/influence/entities", {
             "q": query, "entity_type": entity_type,
             "page": page, "page_size": 25,
         })
@@ -576,9 +544,9 @@ class Tools:
         await emitter.progress_update(f"Fetching entity network for ID {entity_id}...")
 
         # Fetch entity detail and network in parallel
-        entity_task = self._get(self._finance_url(), f"/api/v1/influence/entities/{entity_id}")
+        entity_task = self._get(self.valves.CIVIC_FINANCE_URL, f"/api/v1/influence/entities/{entity_id}")
         network_task = self._get(
-            self._finance_url(),
+            self.valves.CIVIC_FINANCE_URL,
             f"/api/v1/influence/entities/{entity_id}/network",
             {"page": page, "page_size": 25},
         )
@@ -644,7 +612,7 @@ class Tools:
         emitter = EventEmitter(__event_emitter__)
         await emitter.progress_update(f"Looking up legislator: {query}")
 
-        data, error = await self._get(self._finance_url(), "/api/v1/crosswalk", {
+        data, error = await self._get(self.valves.CIVIC_FINANCE_URL, "/api/v1/crosswalk", {
             "q": query, "state": state, "chamber": chamber,
             "page": page, "page_size": 25,
         })
@@ -737,7 +705,7 @@ class Tools:
         await emitter.progress_update(f"Building funding profile for {bioguide_id}...")
 
         data, error = await self._get(
-            self._finance_url(),
+            self.valves.CIVIC_FINANCE_URL,
             f"/api/v1/compose/legislator-funding/{bioguide_id}",
             {"identifier_type": identifier_type},
             timeout=self.valves.COMPOSE_TIMEOUT,
@@ -875,7 +843,7 @@ class Tools:
         await emitter.progress_update(f"Mapping influence for {org_name}...")
 
         data, error = await self._get(
-            self._finance_url(),
+            self.valves.CIVIC_FINANCE_URL,
             "/api/v1/compose/org-influence",
             {"org_name": org_name},
             timeout=self.valves.COMPOSE_TIMEOUT,
@@ -1012,7 +980,7 @@ class Tools:
         await emitter.progress_update(f"Running pay-to-play analysis for {entity_name}...")
 
         data, error = await self._get(
-            self._finance_url(),
+            self.valves.CIVIC_FINANCE_URL,
             "/api/v1/compose/pay-to-play",
             {"entity_name": entity_name},
             timeout=self.valves.COMPOSE_TIMEOUT,
@@ -1143,7 +1111,7 @@ class Tools:
         emitter = EventEmitter(__event_emitter__)
         await emitter.progress_update(f"Searching independent expenditures: {query}")
 
-        data, error = await self._get(self._finance_url(), "/api/v1/expenditures", {
+        data, error = await self._get(self.valves.CIVIC_FINANCE_URL, "/api/v1/expenditures", {
             "q": query, "candidate_id": candidate_id,
             "support_oppose": support_oppose, "state": state, "cycle": cycle,
             "page": page, "page_size": 25,
@@ -1211,13 +1179,13 @@ class Tools:
         await emitter.progress_update(f"Generating intelligence briefing: {query}")
 
         # Fan out to three data sources in parallel
-        lobbying_task = self._get(self._finance_url(), "/api/v1/lobbying/filings", {
+        lobbying_task = self._get(self.valves.CIVIC_FINANCE_URL, "/api/v1/lobbying/filings", {
             "q": query, "page": 1, "page_size": 10,
         })
-        influence_task = self._get(self._finance_url(), "/api/v1/influence/entities", {
+        influence_task = self._get(self.valves.CIVIC_FINANCE_URL, "/api/v1/influence/entities", {
             "q": query, "page": 1, "page_size": 10,
         })
-        candidates_task = self._get(self._finance_url(), "/api/v1/candidates", {
+        candidates_task = self._get(self.valves.CIVIC_FINANCE_URL, "/api/v1/candidates", {
             "q": query, "page": 1, "page_size": 10,
         })
 
@@ -1351,7 +1319,7 @@ class Tools:
         emitter = EventEmitter(__event_emitter__)
         await emitter.progress_update(f"Searching IRS exempt organizations: {query}")
 
-        data, error = await self._get(self._irs_url(), "/api/organizations", {
+        data, error = await self._get(self.valves.CIVIC_IRS_URL, "/api/organizations", {
             "q": query, "state": state, "subsection": subsection,
             "ntee": ntee, "is_foundation": is_foundation,
             "min_assets": min_assets, "sort": sort,
@@ -1439,7 +1407,7 @@ class Tools:
         emitter = EventEmitter(__event_emitter__)
         await emitter.progress_update(f"Fetching 990 filings for EIN {ein}...")
 
-        data, error = await self._get(self._irs_url(), f"/api/filings/{ein}", {
+        data, error = await self._get(self.valves.CIVIC_IRS_URL, f"/api/filings/{ein}", {
             "form_type": form_type, "page": page, "page_size": 25,
         })
 

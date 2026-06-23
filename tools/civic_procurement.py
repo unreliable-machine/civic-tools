@@ -6,21 +6,10 @@ version: 0.1.0
 requirements: httpx
 """
 
-import json
 import os
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, Optional
 
 from pydantic import BaseModel, Field
-
-SYSTEM_PROMPT_INJECTION = """
-### Civic Procurement Intelligence — Usage Guide
-Use this tool for federal contracting and procurement data:
-- `search_opportunities` — Open solicitations/RFPs from SAM.gov (what the government wants to buy)
-- `search_awards` — Completed contract awards from USAspending (what the government already bought)
-- `search_entities` — Companies registered to do business with the government (SAM.gov)
-- `get_opportunity` / `get_entity` — Detailed views of specific records
-Do NOT use this tool for grants or foundation funding — use the Civic Funding tool instead.
-"""
 
 
 class EventEmitter:
